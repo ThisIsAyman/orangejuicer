@@ -37,19 +37,41 @@ logger = logging.getLogger("orangejuicer")
 
 def cmd_sync(args: argparse.Namespace) -> None:
     """Sync OTF and Reddit data into the local database."""
-    from orangejuicer.auth import OTFAuth
     from orangejuicer.db import get_connection
-    from orangejuicer.sync import SyncEngine
 
     conn = get_connection()
-    auth = OTFAuth()
-    engine = SyncEngine(conn=conn, auth=auth)
 
-    print("\n🔄 Syncing data to local database …\n")
-    results = engine.sync_all(
-        force_full=args.full,
-        reddit_limit=args.reddit_limit,
-    )
+    if args.demo:
+        from orangejuicer.demo import (
+            generate_demo_data,
+            load_fixtures,
+            replay_into_db,
+            save_fixtures,
+            DEMO_WORKOUTS_FILE,
+        )
+
+        if DEMO_WORKOUTS_FILE.exists():
+            print("\n🎭 Loading demo data from fixtures …\n")
+            workouts, reddit_posts = load_fixtures()
+        else:
+            print("\n🎭 Generating synthetic demo data …\n")
+            workouts, reddit_posts = generate_demo_data()
+            save_fixtures(workouts, reddit_posts)
+
+        results = replay_into_db(conn, workouts, reddit_posts)
+    else:
+        from orangejuicer.auth import OTFAuth
+        from orangejuicer.sync import SyncEngine
+
+        auth = OTFAuth()
+        engine = SyncEngine(conn=conn, auth=auth)
+
+        print("\n🔄 Syncing data to local database …\n")
+        results = engine.sync_all(
+            force_full=args.full,
+            reddit_limit=args.reddit_limit,
+            capture=getattr(args, "capture", False),
+        )
 
     for entity, count in results.items():
         print(f"  {entity}: {count} records synced")
@@ -204,6 +226,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--full",
         action="store_true",
         help="Force a full re-sync (fetch all history, not just new data)",
+    )
+    sync_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Load demo/fixture data instead of hitting the real API",
+    )
+    sync_parser.add_argument(
+        "--capture",
+        action="store_true",
+        help="Save raw API responses as JSON fixtures for offline replay",
     )
     subparsers.add_parser("stats", help="Print summary statistics to the console")
     subparsers.add_parser("visualize", help="Generate workout visualisation charts")

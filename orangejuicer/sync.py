@@ -65,7 +65,7 @@ class SyncEngine:
     # Workout sync
     # ------------------------------------------------------------------
 
-    def sync_workouts(self, force_full: bool = False) -> int:
+    def sync_workouts(self, force_full: bool = False, capture: bool = False) -> int:
         """Sync workouts from the OTF API into the local database.
 
         Returns the number of workouts synced.
@@ -89,6 +89,10 @@ class SyncEngine:
         # Fetch in 90-day chunks to avoid API pagination limits
         raw_workouts = self._fetch_workouts_chunked(start_date, end_date)
 
+        # Capture raw API responses to JSON fixtures for offline replay
+        if capture:
+            self._capture_workouts(raw_workouts)
+
         count = 0
         for raw in raw_workouts:
             try:
@@ -107,6 +111,27 @@ class SyncEngine:
         self.conn.commit()
         logger.info("Synced %d workouts.", count)
         return count
+
+    def _capture_workouts(self, raw_workouts: list) -> None:
+        """Save raw API workout responses as JSON fixtures for offline replay."""
+        from orangejuicer.demo import FIXTURES_DIR
+
+        capture_path = FIXTURES_DIR / "captured_workouts.json"
+        capture_path.parent.mkdir(parents=True, exist_ok=True)
+
+        captured = []
+        for raw in raw_workouts:
+            try:
+                if hasattr(raw, "model_dump"):
+                    captured.append(raw.model_dump())
+                else:
+                    captured.append({"performance_summary_id": getattr(raw, "performance_summary_id", "unknown")})
+            except Exception:
+                logger.warning("Could not serialize workout for capture")
+
+        with open(capture_path, "w") as f:
+            json.dump(captured, f, indent=2, default=str)
+        logger.info("Captured %d workouts to %s", len(captured), capture_path)
 
     def _get_member_start_date(self) -> date:
         """Get the member's account creation date for full sync."""
@@ -420,11 +445,11 @@ class SyncEngine:
     # Full sync orchestrator
     # ------------------------------------------------------------------
 
-    def sync_all(self, force_full: bool = False, reddit_limit: int = 200) -> dict[str, int]:
+    def sync_all(self, force_full: bool = False, reddit_limit: int = 200, capture: bool = False) -> dict[str, int]:
         """Run all sync operations and return counts per entity."""
         results: dict[str, int] = {}
 
-        results["workouts"] = self.sync_workouts(force_full=force_full)
+        results["workouts"] = self.sync_workouts(force_full=force_full, capture=capture)
         results["benchmarks"] = self.sync_benchmarks()
         results["body_composition"] = self.sync_body_composition()
 

@@ -1,19 +1,24 @@
 # orangejuicer 🍊
 
-**OTF Data Fetcher** — authenticate, download, visualise, and compare your
-[OrangeTheory Fitness](https://www.orangetheory.com/) workout data, then
-benchmark it against the community on [r/orangetheory](https://www.reddit.com/r/orangetheory/).
+**Your OrangeTheory data, locally.** Authenticate, sync, browse, visualise,
+and compare your [OrangeTheory Fitness](https://www.orangetheory.com/) workout
+data — then benchmark it against the community on
+[r/orangetheory](https://www.reddit.com/r/orangetheory/).
+
+All data is stored in a local SQLite database so you never have to re-fetch.
 
 ---
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| 🔐 **Authentication** | Log in to `api.orangetheoryfitness.com` via the [`otf-api`](https://github.com/NodeJSmith/otf-api) library using email/password (or env vars). |
-| 📥 **Data download** | Fetch your full workout history: splat points, calories, heart-rate zones, step count, coach, studio, and more. |
-| 📊 **Visualisations** | Static PNG charts (splat points over time, calories, HR zone distribution, workout frequency) **plus** an interactive HTML dashboard. |
-| 🔴 **Reddit comparison** | Scrape `r/orangetheory` with [`praw`](https://praw.readthedocs.io/) to build community benchmarks; see where you rank. |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| 🔐 **Authentication** | ✅ | Log in via [`otf-api`](https://github.com/NodeJSmith/otf-api) (email/password or env vars). |
+| 📥 **Local sync** | ✅ | Full & incremental sync of workouts, telemetry, benchmarks, body composition, and Reddit posts into a local SQLite database. Handles 1000+ workouts via 90-day chunked fetching. |
+| 🎭 **Demo mode** | ✅ | Generate 200 realistic synthetic workouts + 150 Reddit posts for development/testing — no API credentials needed. |
+| 📊 **Statistics** | ✅ | CLI summary stats from the local database (splats, calories, HR, coaches, studios). |
+| 📈 **Visualisations** | 🚧 | PNG charts + interactive HTML dashboard (splat trends, calories, HR zones, workout frequency). |
+| 🔴 **Reddit comparison** | 🚧 | Compare your stats against r/orangetheory community benchmarks. |
 
 ---
 
@@ -27,7 +32,14 @@ cd orangejuicer
 pip install -r requirements.txt
 ```
 
-### 2. Configure credentials
+### 2. Try it instantly with demo data (no credentials needed)
+
+```bash
+python main.py sync --demo
+python main.py stats
+```
+
+### 3. Or configure credentials for real data
 
 Copy `.env.example` to `.env` and fill in your details:
 
@@ -46,16 +58,28 @@ REDDIT_CLIENT_SECRET=your_reddit_client_secret
 REDDIT_USER_AGENT=orangejuicer/0.1.0 by u/your_reddit_username
 ```
 
-### 3. Run
+### 4. Sync & explore
 
 ```bash
-# Print summary statistics
+# Sync all data from the OTF API (first run = full history)
+python main.py sync
+
+# Subsequent syncs only fetch new data (with 7-day lookback)
+python main.py sync
+
+# Force a full re-sync
+python main.py sync --full
+
+# Save raw API responses as JSON fixtures for offline replay
+python main.py sync --capture
+
+# Print summary statistics from local database
 python main.py stats
 
-# Generate all workout charts  →  output/
+# Generate all workout charts → output/
 python main.py visualize
 
-# Compare your stats against Reddit community data  →  output/
+# Compare your stats against Reddit community → output/
 python main.py compare
 
 # Do everything at once
@@ -70,36 +94,45 @@ All charts are saved to the `output/` directory (configurable with `--output-dir
 
 ```
 usage: orangejuicer [-h] [--output-dir DIR] [--limit N] [--reddit-limit N]
-                    {stats,visualize,compare,all}
-
-Fetch, visualise, and compare OrangeTheory Fitness data.
+                    {sync,stats,visualize,compare,all}
 
 subcommands:
+  sync        Sync OTF and Reddit data to local database
   stats       Print summary statistics to the console
   visualize   Generate workout visualisation charts
   compare     Compare personal data against Reddit community data
   all         Run stats + visualize + compare
 
-options:
+sync options:
+  --full      Force a full re-sync (fetch all history)
+  --demo      Load demo/fixture data (no API needed)
+  --capture   Save raw API responses as JSON fixtures
+
+global options:
   --output-dir DIR    Directory where charts are saved (default: output/)
-  --limit N           Maximum number of OTF workouts to retrieve (default: 100)
-  --reddit-limit N    Maximum number of Reddit posts to fetch (default: 200)
+  --limit N           Maximum OTF workouts to retrieve (default: 100)
+  --reddit-limit N    Maximum Reddit posts to fetch (default: 200)
 ```
 
 ---
 
-## Generated charts
+## Database
 
-| File | Description |
-|------|-------------|
-| `splat_points_over_time.png` | Line chart of splat points per workout with your personal average |
-| `calories_over_time.png` | Bar chart of calories burned per workout |
-| `hr_zones_distribution.png` | Donut + bar charts showing cumulative time in each HR zone |
-| `workout_frequency_heatmap.png` | Workouts by day-of-week and monthly trend |
-| `dashboard.html` | Interactive Plotly dashboard (splat points, calories, HR) |
-| `comparison_splat_points.png` | Your avg splat points vs Reddit community percentiles |
-| `comparison_calories.png` | Your avg calories vs Reddit community percentiles |
-| `comparison_percentile_rank.png` | Your estimated percentile rank in the community |
+Data is stored in `~/.orangejuicer/orangejuicer.db` (override with `OJ_DB_PATH` env var).
+
+**Schema** (9 tables):
+
+| Table | Description |
+|-------|-------------|
+| `studios` | Studio metadata (name, location, timezone) |
+| `workouts` | One row per completed class (date, coach, calories, splats, HR, zones) |
+| `treadmill_summary` | Per-workout treadmill aggregates (pace, speed, distance, incline) |
+| `rower_summary` | Per-workout rower aggregates (pace, power, cadence, distance) |
+| `telemetry` | Full per-second time-series (~150 points/workout: HR, tread, rower) |
+| `reddit_posts` | Parsed r/orangetheory posts with extracted stats |
+| `benchmarks` | Challenge/benchmark results |
+| `body_composition` | Body composition records |
+| `sync_log` | Per-entity sync cursors for incremental sync |
 
 ---
 
@@ -111,18 +144,20 @@ orangejuicer/
 │   ├── __init__.py
 │   ├── auth.py             # OTF authentication wrapper
 │   ├── client.py           # OTF data fetching & normalisation
+│   ├── db.py               # SQLite schema, migrations, upsert functions
+│   ├── sync.py             # Sync engine (full/incremental, chunked fetch)
+│   ├── demo.py             # Synthetic data generator & fixture loader
 │   ├── reddit.py           # Reddit scraper & stat parser
 │   ├── visualizations.py   # Matplotlib / Plotly chart generation
 │   └── comparisons.py      # Personal vs. community comparison
-├── tests/
-│   ├── test_auth.py
-│   ├── test_client.py
-│   ├── test_comparisons.py
-│   ├── test_reddit.py
-│   └── test_visualizations.py
+├── fixtures/
+│   ├── demo_workouts.json  # 200 synthetic workouts (committed)
+│   └── demo_reddit.json    # 150 synthetic Reddit posts (committed)
+├── tests/                  # 95 tests (pytest)
 ├── main.py                 # CLI entry point
 ├── requirements.txt
 ├── pyproject.toml
+├── CHANGELOG.md
 └── .env.example
 ```
 
@@ -141,6 +176,9 @@ pytest tests/ -v
 
 * The OTF API is **unofficial** and may change without notice.  This project uses
   the community-maintained [`otf-api`](https://pypi.org/project/otf-api/) library.
+* **CPU compatibility**: prebuilt numpy 2.x wheels require AVX2. On older CPUs
+  (e.g. Intel Atom), install numpy 1.26.4 from source:
+  `pip install numpy==1.26.4 --no-binary numpy`
 * Reddit data is fetched read-only via the official Reddit API; you must comply
   with [Reddit's API terms](https://www.redditinc.com/policies/data-api-terms).
 * Never share your credentials.  Keep `.env` out of version control (it is
