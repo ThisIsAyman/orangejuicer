@@ -245,3 +245,17 @@ class TestSyncWithTreadmillRower:
         row = db.execute("SELECT * FROM rower_summary WHERE performance_summary_id = 'ps-1'").fetchone()
         assert row is not None
         assert row["avg_power"] == 3.0
+
+
+class TestChunkedFetch:
+    def test_chunks_large_date_range(self, db):
+        """Verify that a multi-year range results in multiple API calls."""
+        workout = _make_mock_workout()
+        engine = _make_engine(db, workouts=[workout], member_created=datetime(2020, 1, 1))
+
+        engine.sync_workouts(force_full=True)
+
+        # The mock returns the same workout each call, but dedup by psid means count=1.
+        # What matters is that get_workouts was called multiple times (chunked).
+        call_count = engine._otf.workouts.get_workouts.call_count
+        assert call_count > 1, f"Expected multiple chunked calls, got {call_count}"

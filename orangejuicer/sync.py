@@ -86,10 +86,8 @@ class SyncEngine:
 
         end_date = date.today()
 
-        raw_workouts = self._otf.workouts.get_workouts(  # type: ignore[union-attr]
-            start_date=start_date,
-            end_date=end_date,
-        )
+        # Fetch in 90-day chunks to avoid API pagination limits
+        raw_workouts = self._fetch_workouts_chunked(start_date, end_date)
 
         count = 0
         for raw in raw_workouts:
@@ -123,6 +121,44 @@ class SyncEngine:
         except Exception:
             logger.warning("Could not determine member start date, using 1 year ago.")
         return date.today() - timedelta(days=365)
+
+    def _fetch_workouts_chunked(
+        self,
+        start_date: date,
+        end_date: date,
+        chunk_days: int = 90,
+    ) -> list:
+        """Fetch workouts in date-range chunks to avoid API pagination limits.
+
+        The OTF bookings API can silently truncate large result sets.  By
+        requesting 90-day windows we ensure all workouts are returned even
+        for accounts with years of history.
+        """
+        all_workouts: list = []
+        seen_ids: set[str] = set()
+
+        chunk_start = start_date
+        while chunk_start <= end_date:
+            chunk_end = min(chunk_start + timedelta(days=chunk_days), end_date)
+            logger.info("  Fetching %s → %s …", chunk_start, chunk_end)
+
+            try:
+                batch = self._otf.workouts.get_workouts(  # type: ignore[union-attr]
+                    start_date=chunk_start,
+                    end_date=chunk_end,
+                )
+                for w in batch:
+                    psid = getattr(w, "performance_summary_id", None)
+                    if psid and psid not in seen_ids:
+                        seen_ids.add(psid)
+                        all_workouts.append(w)
+            except Exception:
+                logger.exception("Failed to fetch chunk %s → %s", chunk_start, chunk_end)
+
+            chunk_start = chunk_end + timedelta(days=1)
+
+        logger.info("Fetched %d total workouts across all chunks.", len(all_workouts))
+        return all_workouts
 
     def _persist_workout(self, raw: Any) -> None:
         """Extract all data from a raw OTF Workout and upsert into the database."""
