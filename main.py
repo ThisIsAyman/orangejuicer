@@ -35,40 +35,84 @@ logging.basicConfig(
 logger = logging.getLogger("orangejuicer")
 
 
-def cmd_stats(args: argparse.Namespace) -> None:
-    """Print a summary of your OTF statistics to the console."""
+def cmd_sync(args: argparse.Namespace) -> None:
+    """Sync OTF and Reddit data into the local database."""
     from orangejuicer.auth import OTFAuth
-    from orangejuicer.client import OTFClient
-    from orangejuicer.comparisons import aggregate_personal
+    from orangejuicer.db import get_connection
+    from orangejuicer.sync import SyncEngine
 
+    conn = get_connection()
     auth = OTFAuth()
-    client = OTFClient(auth)
+    engine = SyncEngine(conn=conn, auth=auth)
 
-    print("\n📊 Fetching your OrangeTheory Fitness data …\n")
-    workouts = client.get_workouts(limit=args.limit)
+    print("\n🔄 Syncing data to local database …\n")
+    results = engine.sync_all(
+        force_full=args.full,
+        reddit_limit=args.reddit_limit,
+    )
 
-    if not workouts:
-        print("No workout data found.")
+    for entity, count in results.items():
+        print(f"  {entity}: {count} records synced")
+    print(f"\n  Database: {conn.execute('PRAGMA database_list').fetchone()[2]}\n")
+    conn.close()
+
+
+def cmd_stats(args: argparse.Namespace) -> None:
+    """Print a summary of your OTF statistics from the local database.
+
+    Falls back to the live API if no local data exists.
+    """
+    from orangejuicer.db import get_connection
+
+    conn = get_connection()
+    row_count = conn.execute("SELECT COUNT(*) as c FROM workouts").fetchone()["c"]
+
+    if row_count == 0:
+        conn.close()
+        print("\n  No local data found. Run 'python main.py sync' first.\n")
         return
 
-    stats = aggregate_personal(workouts)
-    print(f"  Total workouts      : {stats.total_workouts}")
-    print(f"  Avg splat points    : {stats.avg_splat_points:.1f}")
-    print(f"  Median splat points : {stats.median_splat_points:.1f}")
-    print(f"  Avg calories        : {stats.avg_calories:.0f}")
-    print(f"  Median calories     : {stats.median_calories:.0f}")
-    if stats.avg_heart_rate:
-        print(f"  Avg heart rate      : {stats.avg_heart_rate:.0f} bpm")
-    print()
+    print(f"\n📊 Statistics from local database ({row_count} workouts)\n")
 
-    # Member-level stats from the API
-    member_stats = client.get_member_stats()
-    if member_stats:
-        print("  Member stats from API:")
-        for key, val in member_stats.items():
-            if val is not None:
-                print(f"    {key}: {val}")
+    stats = conn.execute("""
+        SELECT
+            COUNT(*)                     AS total_workouts,
+            AVG(splat_points)            AS avg_splat,
+            AVG(calories_burned)         AS avg_cal,
+            AVG(avg_hr)                  AS avg_hr,
+            MAX(calories_burned)         AS max_cal,
+            MAX(splat_points)            AS max_splat,
+            MIN(workout_date)            AS first_workout,
+            MAX(workout_date)            AS last_workout,
+            COUNT(DISTINCT coach_name)   AS unique_coaches,
+            COUNT(DISTINCT studio_uuid)  AS unique_studios
+        FROM workouts
+    """).fetchone()
+
+    print(f"  Total workouts      : {stats['total_workouts']}")
+    print(f"  Date range          : {stats['first_workout']} → {stats['last_workout']}")
+    print(f"  Avg splat points    : {stats['avg_splat']:.1f}")
+    print(f"  Avg calories        : {stats['avg_cal']:.0f}")
+    if stats["avg_hr"]:
+        print(f"  Avg heart rate      : {stats['avg_hr']:.0f} bpm")
+    print(f"  Best splat session  : {stats['max_splat']}")
+    print(f"  Best calorie session: {stats['max_cal']}")
+    print(f"  Unique coaches      : {stats['unique_coaches']}")
+    print(f"  Unique studios      : {stats['unique_studios']}")
+
+    # Top coaches
+    coaches = conn.execute("""
+        SELECT coach_name, COUNT(*) as cnt, AVG(splat_points) as avg_splat
+        FROM workouts WHERE coach_name IS NOT NULL AND coach_name != ''
+        GROUP BY coach_name ORDER BY cnt DESC LIMIT 5
+    """).fetchall()
+    if coaches:
+        print("\n  Top coaches:")
+        for c in coaches:
+            print(f"    {c['coach_name']}: {c['cnt']} classes (avg {c['avg_splat']:.1f} splats)")
+
     print()
+    conn.close()
 
 
 def cmd_visualize(args: argparse.Namespace) -> None:
@@ -155,6 +199,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+    sync_parser = subparsers.add_parser("sync", help="Sync OTF and Reddit data to local database")
+    sync_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Force a full re-sync (fetch all history, not just new data)",
+    )
     subparsers.add_parser("stats", help="Print summary statistics to the console")
     subparsers.add_parser("visualize", help="Generate workout visualisation charts")
     subparsers.add_parser("compare", help="Compare personal data against Reddit community data")
@@ -168,6 +218,7 @@ def main() -> None:
     args = parser.parse_args()
 
     commands = {
+        "sync": cmd_sync,
         "stats": cmd_stats,
         "visualize": cmd_visualize,
         "compare": cmd_compare,
