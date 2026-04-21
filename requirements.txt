@@ -1,0 +1,7 @@
+otf-api>=0.15.4
+praw>=7.8.1
+matplotlib>=3.9.0
+pandas>=2.2.0
+plotly>=5.22.0
+python-dotenv>=1.0.0
+kaleido>=0.2.1

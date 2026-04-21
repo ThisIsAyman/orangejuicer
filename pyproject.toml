@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orangejuicer"
+version = "0.1.0"
+description = "Authenticate, download and visualise OrangeTheory Fitness data; compare against Reddit community workouts."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "otf-api>=0.15.4",
+    "praw>=7.8.1",
+    "matplotlib>=3.9.0",
+    "pandas>=2.2.0",
+    "plotly>=5.22.0",
+    "python-dotenv>=1.0.0",
+    "kaleido>=0.2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+    "black>=24.0.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+orangejuicer = "main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["orangejuicer*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
