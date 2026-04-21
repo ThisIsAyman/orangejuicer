@@ -23,24 +23,4 @@ All notable changes to orangejuicer are documented here.
 - `client.py` rewritten for otf-api v0.15.4 sub-object API structure
 - `stats` command reads from local SQLite DB (was: live API fetch every run)
 
----
-
-## Backlog
-
-### Planned Features
-- [ ] **DB-backed visualisations** — rewire `visualize` command to read from local DB instead of live API
-- [ ] **DB-backed comparisons** — rewire `compare` command to use local DB + reddit_posts table
-- [ ] **Query command** — `python main.py query --last 30` for quick date-range queries
-- [ ] **Export command** — dump SQLite → JSON/CSV for sharing or migration
-- [ ] **Workout detail view** — `python main.py workout <id>` to show full telemetry for one session
-- [ ] **Coach/studio analytics** — breakdown by coach and studio with trends
-- [ ] **Reddit NLP parsing** — extract structured stats from unstructured Reddit post text
-- [ ] **Benchmark tracking** — display challenge results and personal records over time
-- [ ] **Progress dashboard** — month-over-month and quarter-over-quarter trends
-- [ ] **Multi-user support** — separate DB profiles for household members
-
-### Known Issues
-- Visualisation and comparison commands still use live API fetch (not local DB yet)
-- Reddit post stat extraction is regex-based and misses many post formats
-- Body composition sync depends on OTF API endpoint availability (may return empty)
-- numpy 2.x prebuilt wheels crash on CPUs without AVX2 (Intel Atom, older Celeron) — must build 1.26.4 from source
+Features, bugs, and backlog are tracked in [GitHub Issues](https://github.com/ThisIsAyman/orangejuicer/issues).
