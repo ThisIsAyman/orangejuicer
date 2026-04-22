@@ -337,15 +337,16 @@ def cmd_query(args: argparse.Namespace) -> None:
     print(f"\n📋 {len(workouts)} workouts found\n")
 
     # Header
-    print(f"  {'Date':<12} {'Class':<12} {'Coach':<16} {'Splats':>6} {'Cals':>6} {'Avg HR':>6}  {'Studio'}")
-    print(f"  {'─'*12} {'─'*12} {'─'*16} {'─'*6} {'─'*6} {'─'*6}  {'─'*20}")
+    print(f"  {'ID':<14} {'Date':<12} {'Coach':<16} {'Splats':>6} {'Cals':>6} {'Avg HR':>6}  {'Studio'}")
+    print(f"  {'─'*14} {'─'*12} {'─'*16} {'─'*6} {'─'*6} {'─'*6}  {'─'*20}")
 
     for w in workouts:
         hr_str = f"{w.avg_heart_rate:>6}" if w.avg_heart_rate else "     -"
         coach = (w.coach[:14] + "…") if len(w.coach) > 15 else w.coach
         studio = (w.studio_name[:18] + "…") if len(w.studio_name) > 19 else w.studio_name
+        short_id = w.workout_id[:12] + "…" if len(w.workout_id) > 13 else w.workout_id
         print(
-            f"  {w.workout_date!s:<12} {'':12} {coach:<16} {w.splat_points:>6} "
+            f"  {short_id:<14} {w.workout_date!s:<12} {coach:<16} {w.splat_points:>6} "
             f"{w.calories_burned:>6} {hr_str}  {studio}"
         )
 
