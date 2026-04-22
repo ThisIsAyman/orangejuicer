@@ -267,25 +267,44 @@ def cmd_workout(args: argparse.Namespace) -> None:
         "SELECT COUNT(*) as c FROM telemetry WHERE performance_summary_id = ?", (psid,)
     ).fetchone()["c"]
     if telem_count > 0:
-        telem = conn.execute(
-            """SELECT MIN(hr) as min_hr, MAX(hr) as max_hr, AVG(hr) as avg_hr,
-                      MAX(agg_calories) as total_cal, MAX(agg_splats) as total_splats
-               FROM telemetry WHERE performance_summary_id = ?""",
-            (psid,),
-        ).fetchone()
-
-        # Mini HR sparkline from telemetry
-        hr_rows = conn.execute(
-            """SELECT hr FROM telemetry WHERE performance_summary_id = ? AND hr IS NOT NULL
+        telem_rows = conn.execute(
+            """SELECT relative_timestamp, hr, tread_speed, tread_incline,
+                      row_speed, row_spm
+               FROM telemetry WHERE performance_summary_id = ?
                ORDER BY relative_timestamp""",
             (psid,),
         ).fetchall()
-        if hr_rows:
-            hrs = [r["hr"] for r in hr_rows]
-            sparkline = _hr_sparkline(hrs)
-            print(f"\n  Telemetry ({telem_count} data points):")
-            print(f"    HR range: {telem['min_hr']}–{telem['max_hr']} bpm (avg {telem['avg_hr']:.0f})")
-            print(f"    {sparkline}")
+
+        hrs = [r["hr"] for r in telem_rows if r["hr"] is not None]
+        tread_speeds = [(r["relative_timestamp"], r["tread_speed"]) for r in telem_rows if r["tread_speed"] is not None]
+        tread_inclines = [(r["relative_timestamp"], r["tread_incline"]) for r in telem_rows if r["tread_incline"] is not None]
+        rower_speeds = [(r["relative_timestamp"], r["row_speed"]) for r in telem_rows if r["row_speed"] is not None]
+        rower_spms = [(r["relative_timestamp"], r["row_spm"]) for r in telem_rows if r["row_spm"] is not None]
+
+        print(f"\n  Telemetry ({telem_count} data points):")
+
+        if hrs:
+            mn, mx = min(hrs), max(hrs)
+            print(f"    HR     : {mn}–{mx} bpm (avg {sum(hrs)/len(hrs):.0f})")
+            print(f"             {_sparkline(hrs)}")
+
+        if tread_speeds:
+            vals = [v for _, v in tread_speeds]
+            t0, t1 = tread_speeds[0][0], tread_speeds[-1][0]
+            print(f"    Tread  : {min(vals):.1f}–{max(vals):.1f} mph  (t={t0}–{t1}s, {len(vals)} pts)")
+            print(f"      Speed: {_sparkline(vals)}")
+            if tread_inclines:
+                inc_vals = [v for _, v in tread_inclines]
+                print(f"      Incl : {_sparkline(inc_vals)}  ({min(inc_vals):.0f}–{max(inc_vals):.0f}%)")
+
+        if rower_speeds:
+            vals = [v for _, v in rower_speeds]
+            t0, t1 = rower_speeds[0][0], rower_speeds[-1][0]
+            print(f"    Rower  : {min(vals):.1f}–{max(vals):.1f} m/s  (t={t0}–{t1}s, {len(vals)} pts)")
+            print(f"      Speed: {_sparkline(vals)}")
+            if rower_spms:
+                spm_vals = [v for _, v in rower_spms]
+                print(f"      SPM  : {_sparkline(spm_vals)}  ({min(spm_vals):.0f}–{max(spm_vals):.0f})")
 
     if row["class_rating"]:
         print(f"\n  Ratings: class={row['class_rating']}/5  coach={row['coach_rating'] or 'N/A'}/5")
@@ -294,13 +313,13 @@ def cmd_workout(args: argparse.Namespace) -> None:
     conn.close()
 
 
-def _hr_sparkline(values: list[int], width: int = 50) -> str:
-    """Render a simple ASCII sparkline of HR values."""
+def _sparkline(values: list[float | int], width: int = 50) -> str:
+    """Render a simple ASCII sparkline."""
     if not values:
         return ""
     blocks = " ▁▂▃▄▅▆▇█"
     mn, mx = min(values), max(values)
-    rng = max(mx - mn, 1)
+    rng = max(mx - mn, 0.001)
 
     # Downsample to fit width
     step = max(1, len(values) // width)
@@ -310,7 +329,7 @@ def _hr_sparkline(values: list[int], width: int = 50) -> str:
     for v in sampled:
         idx = int((v - mn) / rng * (len(blocks) - 1))
         chars.append(blocks[idx])
-    return "    HR: " + "".join(chars)
+    return "".join(chars)
 
 
 def cmd_query(args: argparse.Namespace) -> None:
