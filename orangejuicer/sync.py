@@ -417,6 +417,9 @@ class SyncEngine:
         count = 0
         try:
             records = self._otf.workouts.get_body_composition_list()  # type: ignore[union-attr]
+            if not records:
+                logger.info("No body composition data available for this account.")
+                return 0
             for rec in records:
                 raw = None
                 try:
@@ -432,8 +435,10 @@ class SyncEngine:
                     "raw_json": raw,
                 })
                 count += 1
+        except AttributeError:
+            logger.info("Body composition API not available for this account.")
         except Exception:
-            logger.exception("Failed to sync body composition")
+            logger.warning("Body composition sync skipped (endpoint unavailable or empty).")
 
         if count:
             update_sync_cursor(self.conn, "body_composition", cursor=date.today().isoformat(), full_sync_done=True)
