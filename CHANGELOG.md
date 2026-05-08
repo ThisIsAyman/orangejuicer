@@ -5,6 +5,8 @@ All notable changes to orangejuicer are documented here.
 ## [Unreleased]
 
 ### Added
+- **Web dashboard** (`web/`) — React + TypeScript static site with drag-and-drop JSON import, workout charts (HR, tread, rower), summary cards, zone distribution, and OTF-inspired dark theme. Hosted via GitHub Pages.
+- **GitHub Actions** (`.github/workflows/deploy.yml`) — automated build and deploy of web dashboard on push
 - **Local SQLite database** with 9-table schema (studios, workouts, treadmill/rower summaries, telemetry, reddit_posts, benchmarks, body_composition, sync_log)
 - **Sync engine** (`orangejuicer/sync.py`) — full & incremental sync from OTF API with 90-day chunked fetching for large histories (1000+ workouts)
 - **Demo/mock data system** (`orangejuicer/demo.py`) — generate 200 realistic synthetic workouts + 150 Reddit posts for development/testing without API credentials
