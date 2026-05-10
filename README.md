@@ -134,6 +134,74 @@ Data is stored in `~/.orangejuicer/orangejuicer.db` (override with `OJ_DB_PATH` 
 | `body_composition` | Body composition records |
 | `sync_log` | Per-entity sync cursors for incremental sync |
 
+### Workout data model
+
+Each workout contains three levels of data:
+
+#### Workout summary (one row per class)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `performance_summary_id` | text | Primary key (from OTF API) |
+| `workout_date` | date | Class date (ISO) |
+| `starts_at` | datetime | Full class start time |
+| `class_name` / `class_type` | text | e.g. "Orange 60", "Lift 45" |
+| `coach_name` | text | Instructor name |
+| `studio_uuid` | text | FK to studios table |
+| `calories_burned` | int | Total calories |
+| `splat_points` | int | Minutes in orange + red zones |
+| `step_count` | int | Total steps |
+| `active_time_seconds` | int | Active workout duration |
+| `avg_hr` / `max_hr` / `peak_hr` | int | Heart rate stats (bpm) |
+| `avg_hr_percent` / `peak_hr_percent` | int | % of max heart rate |
+| `zone_gray_min` .. `zone_red_min` | int | Minutes in each HR zone |
+| `class_rating` / `coach_rating` | int | User ratings (0–3) |
+
+#### Equipment summaries (one row per workout, per equipment)
+
+**Treadmill** (`treadmill_summary`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `avg_speed` / `max_speed` | real | mph |
+| `avg_pace` / `max_pace` | real | min/mile |
+| `total_distance` | real | miles |
+| `avg_incline` / `max_incline` | real | % grade |
+| `elevation_gained` | real | feet |
+| `moving_time` | real | seconds on the tread |
+
+**Rower** (`rower_summary`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `avg_speed` / `max_speed` | real | speed units |
+| `avg_pace` / `max_pace` | real | sec per 500m |
+| `total_distance` | real | meters |
+| `avg_cadence` / `max_cadence` | real | strokes per minute |
+| `avg_power` | real | watts |
+| `moving_time` | real | seconds on the rower |
+
+#### Telemetry time-series (~150 samples per workout, every ~18 seconds)
+
+| Field | Type | When populated | Description |
+|-------|------|----------------|-------------|
+| `relative_timestamp` | int | Always | Seconds from class start |
+| `timestamp` | datetime | Always | Absolute time |
+| `hr` | int | Full class | Heart rate (bpm) |
+| `agg_splats` | int | Full class | Cumulative splat points at this moment |
+| `agg_calories` | int | Full class | Cumulative calories at this moment |
+| `tread_speed` | real | On treadmill only | Current speed (mph) |
+| `tread_incline` | real | On treadmill only | Current incline (%) |
+| `tread_distance` | real | On treadmill only | Cumulative distance (miles) |
+| `row_speed` | real | On rower only | Current speed |
+| `row_spm` | real | On rower only | Current strokes per minute |
+| `row_distance` | real | On rower only | Cumulative distance (meters) |
+| `row_pace` | int | On rower only | Current pace (sec per 500m) |
+
+> **Note:** Equipment fields are `null` when you're not on that station (e.g. on the
+> floor or transitioning). HR and cumulative fields are present throughout the entire class.
+> You can derive per-interval speed/distance by computing deltas between consecutive samples.
+
 ---
 
 ## Project structure
@@ -153,7 +221,9 @@ orangejuicer/
 ├── fixtures/
 │   ├── demo_workouts.json  # 200 synthetic workouts (committed)
 │   └── demo_reddit.json    # 150 synthetic Reddit posts (committed)
-├── tests/                  # 95 tests (pytest)
+├── tests/                  # 106 tests (pytest)
+├── web/                    # React + TypeScript web dashboard
+│   └── src/
 ├── main.py                 # CLI entry point
 ├── requirements.txt
 ├── pyproject.toml
