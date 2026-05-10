@@ -7,10 +7,11 @@ import {
   LineElement,
   Tooltip,
   Legend,
+  Filler,
 } from "chart.js";
 import type { TelemetryPoint } from "../../store/db";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -18,38 +19,63 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function TreadChart({ telemetry }: { telemetry: TelemetryPoint[] }) {
-  const pts = telemetry.filter((t) => t.tread_speed != null);
+interface TreadChartProps {
+  telemetry: TelemetryPoint[];
+  aligned?: boolean;
+}
+
+export default function TreadChart({ telemetry, aligned = false }: TreadChartProps) {
+  // In aligned mode, use full timeline; otherwise filter to tread-only points
+  const pts = aligned ? telemetry : telemetry.filter((t) => t.tread_speed != null);
   if (pts.length === 0) return <p className="no-data">No treadmill data</p>;
 
   const hasIncline = pts.some((t) => t.tread_incline != null && t.tread_incline > 0);
+  const hasHR = aligned && pts.some((t) => t.hr != null);
 
   return (
     <Line
       data={{
         labels: pts.map((t) => formatTime(t.relative_timestamp)),
         datasets: [
+          ...(hasHR
+            ? [
+                {
+                  label: "Heart Rate",
+                  data: pts.map((t) => t.hr ?? null),
+                  borderColor: "rgba(239,68,68,0.4)",
+                  backgroundColor: "rgba(239,68,68,0.05)",
+                  fill: true,
+                  tension: 0.2,
+                  pointRadius: 0,
+                  borderWidth: 1.5,
+                  yAxisID: "yHR",
+                  spanGaps: true,
+                },
+              ]
+            : []),
           {
             label: "Speed (mph)",
-            data: pts.map((t) => t.tread_speed!),
+            data: pts.map((t) => t.tread_speed ?? null),
             borderColor: "#22c55e",
             backgroundColor: "rgba(34,197,94,0.1)",
             tension: 0.2,
             pointRadius: 0,
             borderWidth: 2,
             yAxisID: "y",
+            spanGaps: false,
           },
           ...(hasIncline
             ? [
                 {
                   label: "Incline (%)",
-                  data: pts.map((t) => t.tread_incline ?? 0),
+                  data: pts.map((t) => t.tread_incline ?? null),
                   borderColor: "#a855f7",
                   backgroundColor: "rgba(168,85,247,0.1)",
                   tension: 0.2,
                   pointRadius: 0,
                   borderWidth: 2,
                   yAxisID: "y1",
+                  spanGaps: false,
                 },
               ]
             : []),
@@ -79,6 +105,18 @@ export default function TreadChart({ telemetry }: { telemetry: TelemetryPoint[] 
                   ticks: { color: "#a855f7" },
                   grid: { drawOnChartArea: false },
                   title: { display: true, text: "Incline", color: "#a855f7" },
+                },
+              }
+            : {}),
+          ...(hasHR
+            ? {
+                yHR: {
+                  type: "linear" as const,
+                  position: "right" as const,
+                  min: 60,
+                  ticks: { color: "rgba(239,68,68,0.5)" },
+                  grid: { drawOnChartArea: false },
+                  title: { display: true, text: "HR", color: "rgba(239,68,68,0.5)" },
                 },
               }
             : {}),

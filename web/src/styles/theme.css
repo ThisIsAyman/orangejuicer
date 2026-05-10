@@ -203,6 +203,36 @@ main {
   margin-top: 4px;
 }
 
+/* ---- Chart Toggle ---- */
+
+.chart-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  width: fit-content;
+}
+.chart-toggle button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: background 0.15s, color 0.15s;
+}
+.chart-toggle button:hover {
+  color: var(--text);
+}
+.chart-toggle button.active {
+  background: var(--orange);
+  color: #fff;
+}
+
 /* ---- Chart Grid ---- */
 
 .chart-grid {

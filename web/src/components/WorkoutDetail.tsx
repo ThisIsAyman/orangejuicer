@@ -14,6 +14,7 @@ export default function WorkoutDetail() {
   const [tread, setTread] = useState<TreadmillSummary | null>(null);
   const [rower, setRower] = useState<RowerSummary | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [aligned, setAligned] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -98,6 +99,23 @@ export default function WorkoutDetail() {
           <ZoneDonut workout={workout} />
         </div>
 
+        {telemetry.length > 0 && (hasTread || hasRower) && (
+          <div className="chart-toggle">
+            <button
+              className={aligned ? "active" : ""}
+              onClick={() => setAligned(true)}
+            >
+              ⏱ Time Aligned
+            </button>
+            <button
+              className={!aligned ? "active" : ""}
+              onClick={() => setAligned(false)}
+            >
+              📊 Separate
+            </button>
+          </div>
+        )}
+
         {telemetry.length > 0 && (
           <div className="chart-container wide">
             <h3>Heart Rate</h3>
@@ -107,15 +125,15 @@ export default function WorkoutDetail() {
 
         {hasTread && (
           <div className="chart-container wide">
-            <h3>Treadmill</h3>
-            <TreadChart telemetry={telemetry} />
+            <h3>Treadmill{aligned ? " + HR" : ""}</h3>
+            <TreadChart telemetry={telemetry} aligned={aligned} />
           </div>
         )}
 
         {hasRower && (
           <div className="chart-container wide">
-            <h3>Rower</h3>
-            <RowerChart telemetry={telemetry} />
+            <h3>Rower{aligned ? " + HR" : ""}</h3>
+            <RowerChart telemetry={telemetry} aligned={aligned} />
           </div>
         )}
       </div>
