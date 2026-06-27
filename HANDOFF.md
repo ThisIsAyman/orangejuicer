@@ -4,6 +4,37 @@ Session log for resuming work. Newest entry on top.
 
 ---
 
+## 2026-06-27 — Committed, pushed, PR opened
+
+Short follow-up to the entry below. The large uncommitted tree from that entry
+is now committed and on GitHub.
+
+### State change
+- ✅ All work **committed** as `13d261b` "Add browser no-Python flow and Strava
+  TCX export" (34 files, +2714/−97).
+- ✅ **Pushed** to `origin/branch_pr_1` (tracks upstream now).
+- ✅ **PR #15** open: `branch_pr_1` → `main` —
+  https://github.com/ThisIsAyman/orangejuicer/pull/15
+- 🚧 GitHub Pages **deploy workflow** triggered on push (run `28281926031`,
+  "Deploy Dashboard to GitHub Pages"); was in_progress at handoff time — verify
+  it went green via `gh run list --branch branch_pr_1`.
+
+### Cleanup done
+- Removed two stray untracked files before committing: `oranejuicer.md` (an
+  exported Copilot session transcript) and `workouts.json` (13MB demo export).
+  Watch for these reappearing — neither is gitignored.
+
+### Still open (carried forward — see entry below for full context)
+- [ ] Live-test browser login/sync vs a real OTF account; verify
+      `web/src/otf/normalize.ts` mapping. Deployed site won't sync until next item.
+- [ ] Deploy Cloudflare Worker (`proxy/`) + set repo variable `OTF_PROXY_URL`
+      so CI injects `VITE_OTF_PROXY_URL` (deploy.yml). JSON import + TCX work
+      without it; only live-sync needs it.
+- [ ] Review/merge PR #15.
+- [ ] `extension-stub` todo — not started, scope unclear.
+
+---
+
 ## 2026-06-26 — Browser no-Python flow + Strava TCX export
 
 ### 1. Project Goal
