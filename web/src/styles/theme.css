@@ -351,6 +351,11 @@ td {
   color: var(--text-muted);
   margin-top: 4px;
 }
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
 
 .equipment-summary {
   display: grid;
@@ -420,4 +425,107 @@ td {
   td, th {
     padding: 6px 6px;
   }
+}
+
+/* ---- Auth / Sync ---- */
+
+.btn-primary {
+  background: var(--orange);
+  border: 1px solid var(--orange);
+  color: #1a1a1a;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.btn-primary:hover {
+  background: #fb8534;
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.btn-secondary:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sync-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sync-status {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+.sync-status.success {
+  color: var(--green);
+}
+.sync-status.error {
+  color: var(--red);
+}
+
+.login-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin: 16px auto;
+  max-width: 360px;
+}
+.login-panel h3 {
+  text-align: center;
+}
+.login-hint {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+.login-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+.login-panel input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 1em;
+}
+.login-panel input:focus {
+  outline: none;
+  border-color: var(--orange);
+}
+.login-error {
+  color: var(--red);
+  font-size: 0.85em;
+}
+.empty-or {
+  margin: 20px 0 12px;
+  color: var(--text-muted);
+  font-size: 0.85em;
 }

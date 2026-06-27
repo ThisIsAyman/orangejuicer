@@ -90,7 +90,160 @@ All charts are saved to the `output/` directory (configurable with `--output-dir
 
 ---
 
-## CLI reference
+## Use it without Python (browser dashboard)
+
+The `web/` dashboard can pull your data **directly in the browser** — no Python,
+no install for the end user. Sign in with your OTF email/password and your
+workouts sync straight into the browser's local storage (IndexedDB), where you
+can browse, chart, and export them. Your synced data lives only in your browser;
+**export** it to JSON/CSV anytime (interchangeable with `python main.py export`),
+or drag-and-drop a CLI-exported JSON file to load it without logging in at all.
+
+To host your own instance you deploy two things — a **static site** (the
+dashboard, e.g. on GitHub Pages) and a tiny **relay proxy** (explained next).
+
+### What is the proxy? (do I need Azure/AWS?)
+
+**No — it is not a managed cloud service you provision and babysit.** It's a
+~100-line **stateless serverless function** that you deploy *once* and then
+forget. The recommended host is **Cloudflare Workers** (free tier, no
+servers/VMs), deployed with a single command; it can also run on Vercel/Netlify
+edge functions or any Node host.
+
+It exists only to work around two **browser** restrictions — it has no other job:
+
+1. **CORS** — browsers refuse to read responses from OrangeTheory's private API
+   unless OTF whitelists your site (it never will). A plain server isn't bound by
+   CORS, so the proxy calls OTF and adds the one header that lets *your* page
+   read the reply.
+2. **Forbidden `User-Agent`** — OTF expects a mobile-app user agent
+   (`okhttp/4.12.0`) that browser JavaScript is not allowed to set; a server can.
+
+The proxy **stores nothing, logs nothing, and holds no credentials.** Your
+browser sends its login token with each request and the proxy just forwards it
+to an allowlist of three OTF hostnames. If it vanished, no data would be lost or
+exposed. Full deploy details: [`proxy/README.md`](proxy/README.md).
+
+### How a sync request flows
+
+```
+  Browser (the dashboard)            Relay proxy (Cloudflare Worker)        OrangeTheory
+  ───────────────────────            ──────────────────────────────        ────────────
+  Sign in (Cognito SRP) ───────────────────────────────────────────────►  AWS Cognito
+    password → Cognito only          (login skips the proxy entirely)       (CORS-enabled)
+    tokens stored in YOUR browser ◄──────────────────────────────────────  ID/refresh tokens
+
+  Sync: GET /relay?target=…  ──────►  adds User-Agent + CORS,
+    Authorization: Bearer <token>     forwards token unchanged   ─────────►  api.orangetheory.*
+                                       (stores nothing)           ◄─────────  workout JSON
+  store in IndexedDB         ◄──────  relays body + CORS header
+```
+
+### Self-hosting walkthrough
+
+**Prerequisites:** Node 20+, a free [Cloudflare](https://dash.cloudflare.com/sign-up)
+account, and this repo cloned.
+
+**1. Deploy the relay proxy.**
+
+```bash
+cd proxy
+npx wrangler login          # one-time browser auth to Cloudflare
+npx wrangler deploy
+```
+
+Wrangler prints a URL like `https://otf-proxy.<you>.workers.dev`. Edit
+`proxy/wrangler.toml` and set `ALLOWED_ORIGIN` to the origin you'll serve the
+dashboard from (e.g. `https://<you>.github.io`) so only your site can use the
+proxy, then re-run `npx wrangler deploy`.
+
+**2. Deploy the dashboard pointed at that proxy.** The proxy URL is baked in at
+build time via `VITE_OTF_PROXY_URL` (see [`web/.env.example`](web/.env.example)).
+
+- *GitHub Pages (automated):* in your repo, go to **Settings → Secrets and
+  variables → Actions → Variables** and add a variable named **`OTF_PROXY_URL`**
+  set to your Worker URL. The existing
+  [`deploy.yml`](.github/workflows/deploy.yml) workflow injects it at build time
+  and publishes `docs/` to Pages.
+- *Any static host (manual):*
+  ```bash
+  cd web
+  npm ci
+  VITE_OTF_PROXY_URL=https://otf-proxy.<you>.workers.dev npm run build
+  # → upload the generated ../docs/ folder to your static host
+  ```
+
+**3. Use it.** Open your site, click **Sign in**, enter your OTF
+email/password, then **Sync all**. Subsequent visits keep you logged in; use
+**Sync new** to fetch only workouts you don't already have.
+
+### Proxy hosting alternatives
+
+| Host | Cost | Notes |
+|------|------|-------|
+| **Cloudflare Workers** | Free tier | Recommended; `npx wrangler deploy`. See [`proxy/README.md`](proxy/README.md). |
+| Vercel / Netlify Edge | Free tier | Same relay logic; thin platform wrapper around `proxy/worker.js`. |
+| Any Node host | Varies | Port the handler to a small HTTP server; keep the host allowlist. |
+
+### Trust model & privacy
+
+- Your **password** goes only to AWS Cognito during login; it never touches the
+  proxy or any orangejuicer server.
+- Login **tokens** are stored only in your browser (IndexedDB/localStorage) so
+  you stay signed in; **Sign out** clears them.
+- The proxy is a **dumb, stateless relay**: no storage, no logging, no
+  credentials, an OTF-only host allowlist, and it refuses upstream redirects so
+  your token can't be replayed off-allowlist.
+- Because tokens transit the proxy *in flight*, run an instance **you** trust
+  (self-hosting it puts you in control). For **zero** third parties in the path,
+  the client layer (`web/src/otf/`) is transport-agnostic, so the same code can
+  ship as a browser extension that calls OTF directly with no proxy (planned).
+
+### Local end-to-end dev
+
+```bash
+# terminal 1 — run the proxy locally
+cd proxy && npx wrangler dev          # http://localhost:8787
+
+# terminal 2 — run the dashboard against it
+cd web && npm install
+VITE_OTF_PROXY_URL=http://localhost:8787 npm run dev
+```
+
+---
+
+## Export to Strava
+
+OrangeTheory doesn't sync to Strava directly, but orangejuicer can emit a
+**TCX file per workout** that Strava imports natively — heart rate, time,
+distance, cadence and speed (OTF has no GPS, so Strava auto-tags it as an indoor
+activity). No Garmin/Polar/TrainingPeaks detour is needed.
+
+**From the CLI:**
+
+```bash
+# Writes one <date>_<psid>.tcx + matching .txt per workout into output/tcx/
+python main.py export --format tcx
+python main.py export --format tcx --output ~/strava-tcx   # custom directory
+```
+
+**From the browser dashboard:** click **Export TCX (Strava)** in the sync bar to
+download a zip of every workout (`.tcx` + `.txt`), or open a single workout and
+use **Export TCX** / **Copy description**.
+
+**Then upload:**
+
+1. Go to [strava.com/upload/select](https://www.strava.com/upload/select) and
+   drag the `.tcx` files on (you can drop up to 25 at once).
+2. Strava ignores the metadata embedded in the file's `<Notes>`, so to get the
+   coach/studio/class onto the activity, open it and **paste the matching `.txt`
+   description** (the dashboard's "Copy description" button does the same).
+
+Re-uploading the same class creates a duplicate in Strava — filenames include the
+date and performance-summary id so you can tell which ones you've already done.
+
+---
+
 
 ```
 usage: orangejuicer [-h] [--output-dir DIR] [--limit N] [--reddit-limit N]
@@ -224,6 +377,9 @@ orangejuicer/
 ├── tests/                  # 106 tests (pytest)
 ├── web/                    # React + TypeScript web dashboard
 │   └── src/
+│       ├── otf/            # Browser OTF client (auth, transport, endpoints, sync)
+│       └── store/          # IndexedDB (Dexie) store, import & export
+├── proxy/                  # Stateless Cloudflare Worker relay for live sync
 ├── main.py                 # CLI entry point
 ├── requirements.txt
 ├── pyproject.toml

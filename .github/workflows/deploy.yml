@@ -30,6 +30,10 @@ jobs:
 
       - name: Install & Build
         working-directory: web
+        env:
+          # Set repo variable OTF_PROXY_URL (Settings → Secrets and variables →
+          # Actions → Variables) to your deployed Worker URL to enable live sync.
+          VITE_OTF_PROXY_URL: ${{ vars.OTF_PROXY_URL }}
         run: |
           npm ci
           npm run build

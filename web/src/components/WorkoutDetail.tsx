@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { db } from "../store/db";
 import type { Workout, TelemetryPoint, TreadmillSummary, RowerSummary } from "../store/db";
+import { buildDescription, buildTcx, tcxStem } from "../store/tcx";
+import { downloadText } from "../store/export";
 import HRTimeSeries from "./charts/HRTimeSeries";
 import TreadChart from "./charts/TreadChart";
 import RowerChart from "./charts/RowerChart";
@@ -15,6 +17,7 @@ export default function WorkoutDetail() {
   const [rower, setRower] = useState<RowerSummary | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [aligned, setAligned] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -55,6 +58,21 @@ export default function WorkoutDetail() {
   const hasTread = telemetry.some((t) => t.tread_speed != null);
   const hasRower = telemetry.some((t) => t.row_speed != null);
 
+  const exportTcx = () => {
+    const stem = tcxStem(workout);
+    downloadText(`${stem}.tcx`, buildTcx(workout, telemetry, workout.studio_name), "application/xml");
+  };
+
+  const copyDescription = async () => {
+    try {
+      await navigator.clipboard.writeText(buildDescription(workout, workout.studio_name));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
     <div className="workout-detail">
       <Link to="/workouts" className="back-link">← All Workouts</Link>
@@ -68,6 +86,14 @@ export default function WorkoutDetail() {
           {workout.studio_name && <span>Studio: {workout.studio_name}</span>}
           {mins && <span>{mins} min</span>}
         </p>
+        <div className="detail-actions">
+          <button className="btn-secondary" onClick={exportTcx}>
+            Export TCX (Strava)
+          </button>
+          <button className="btn-secondary" onClick={copyDescription}>
+            {copied ? "Copied!" : "Copy description"}
+          </button>
+        </div>
       </div>
 
       <div className="stat-cards">

@@ -403,6 +403,31 @@ def cmd_export(args: argparse.Namespace) -> None:
         conn.close()
         return
 
+    if args.format == "tcx":
+        from orangejuicer.tcx import build_description, build_tcx
+
+        out_dir = Path(args.output) if args.output else Path("output/tcx")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        count = 0
+        for row in rows:
+            d = dict(row)
+            psid = d["performance_summary_id"]
+            telem = conn.execute(
+                "SELECT * FROM telemetry WHERE performance_summary_id = ? ORDER BY relative_timestamp",
+                (psid,),
+            ).fetchall()
+            tcx_text = build_tcx(d, [dict(t) for t in telem], d.get("studio_name"))
+            desc_text = build_description(d, d.get("studio_name"))
+            stem = f"{str(d.get('workout_date') or 'unknown')[:10]}_{psid}"
+            (out_dir / f"{stem}.tcx").write_text(tcx_text)
+            (out_dir / f"{stem}.txt").write_text(desc_text)
+            count += 1
+        conn.close()
+        print(f"\n  Exported {count} workouts to {out_dir}/ (.tcx + .txt)")
+        print("  Upload the .tcx files at https://www.strava.com/upload/select,")
+        print("  then paste the matching .txt into each activity's description.\n")
+        return
+
     if args.format == "json":
         data = []
         for row in rows:
@@ -525,7 +550,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     # export
     export_parser = subparsers.add_parser("export", help="Export data to JSON or CSV")
-    export_parser.add_argument("--format", choices=["json", "csv"], default="json", help="Output format (default: json)")
+    export_parser.add_argument(
+        "--format",
+        choices=["json", "csv", "tcx"],
+        default="json",
+        help=(
+            "Output format (default: json). tcx writes one Strava-ready "
+            ".tcx + .txt per workout into a directory."
+        ),
+    )
     export_parser.add_argument("--output", "-o", metavar="FILE", help="Write to file instead of stdout")
     export_parser.add_argument("--full", action="store_true", help="Include treadmill, rower, and telemetry data")
 

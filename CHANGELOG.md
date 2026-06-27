@@ -5,6 +5,22 @@ All notable changes to orangejuicer are documented here.
 ## [Unreleased]
 
 ### Added
+- **Strava export (TCX)** — generate a Strava-ready `.tcx` per workout (HR, time,
+  distance, cadence, speed; auto-tagged indoor) from both the CLI
+  (`export --format tcx`) and the dashboard ("Export TCX (Strava)" batch zip, plus
+  per-workout "Export TCX" / "Copy description"). Each `.tcx` ships with a `.txt`
+  description sidecar to paste into Strava, since Strava ignores embedded `<Notes>`.
+  CLI (`orangejuicer/tcx.py`) and web (`web/src/store/tcx.ts`) produce identical output.
+- **Browser live sync (no Python)** — the `web/` dashboard can now authenticate
+  to OrangeTheory directly in the browser (AWS Cognito SRP via
+  `amazon-cognito-identity-js`) and pull workouts + telemetry, body composition,
+  and benchmarks into local IndexedDB. New transport-agnostic OTF client in
+  `web/src/otf/` (`auth`, `transport`, `endpoints`, `normalize`, `sync`).
+- **Stateless relay proxy** (`proxy/`) — Cloudflare Worker that forwards browser
+  requests to OTF's API (working around CORS + forbidden headers) while storing
+  nothing and holding no credentials. Configured via `VITE_OTF_PROXY_URL`.
+- **Browser export** — export the local store to JSON/CSV from the dashboard,
+  interchangeable with `python main.py export`.
 - **Web dashboard** (`web/`) — React + TypeScript static site with drag-and-drop JSON import, workout charts (HR, tread, rower), summary cards, zone distribution, and OTF-inspired dark theme. Hosted via GitHub Pages.
 - **GitHub Actions** (`.github/workflows/deploy.yml`) — automated build and deploy of web dashboard on push
 - **Local SQLite database** with 9-table schema (studios, workouts, treadmill/rower summaries, telemetry, reddit_posts, benchmarks, body_composition, sync_log)
