@@ -1,6 +1,6 @@
 """Tests for orangejuicer.client"""
 
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,27 +8,49 @@ import pytest
 from orangejuicer.client import OTFClient, WorkoutRecord
 
 
+def _make_zone_time_mock(gray=5, blue=10, green=15, orange=20, red=5):
+    """Return a mock that mimics a ZoneTimeMinutes Pydantic model."""
+    ztm = MagicMock()
+    ztm.model_dump.return_value = {
+        "gray": gray, "blue": blue, "green": green, "orange": orange, "red": red,
+    }
+    return ztm
+
+
+def _make_heart_rate_mock(avg_hr=142, max_hr=170):
+    hr = MagicMock()
+    hr.avg_hr = avg_hr
+    hr.max_hr = max_hr
+    return hr
+
+
 def _make_workout_mock(**kwargs):
-    """Return a MagicMock that mimics an otf-api workout object."""
+    """Return a MagicMock that mimics an otf-api v0.15+ Workout model."""
+    otf_class = MagicMock()
+    otf_class.starts_at = kwargs.pop("starts_at", datetime(2024, 3, 15, 9, 0))
+    otf_class.coach = kwargs.pop("coach", "Coach Mike")
+
+    studio = MagicMock()
+    studio.name = kwargs.pop("studio_name", "Test Studio")
+
     defaults = {
-        "workout_id": "abc-123",
-        "class_date": date(2024, 3, 15),
-        "coach": "Coach Mike",
+        "performance_summary_id": "abc-123",
         "calories_burned": 500,
         "splat_points": 18,
         "step_count": 8000,
-        "active_time": 3600,
-        "avg_heart_rate": 142,
-        "max_heart_rate": 170,
-        "heart_rate_zones": {"gray": 5, "blue": 10, "green": 15, "orange": 20, "red": 5},
-        "studio": MagicMock(name="Test Studio"),
+        "active_time_seconds": 3600,
+        "heart_rate": _make_heart_rate_mock(),
+        "zone_time_minutes": _make_zone_time_mock(),
+        "otf_class": otf_class,
+        "studio": studio,
     }
     defaults.update(kwargs)
+
     mock = MagicMock()
     for key, val in defaults.items():
         setattr(mock, key, val)
-    # model_dump returns a plain dict
-    mock.model_dump.return_value = {k: str(v) for k, v in defaults.items() if k != "studio"}
+    mock.model_dump.return_value = {k: str(v) for k, v in defaults.items()
+                                     if k not in ("studio", "otf_class", "heart_rate", "zone_time_minutes")}
     return mock
 
 
@@ -55,10 +77,9 @@ class TestWorkoutRecord:
 
     def test_from_api_missing_fields_use_defaults(self):
         mock = MagicMock()
-        # Simulate missing attributes
-        for attr in ("workout_id", "class_date", "coach", "calories_burned", "splat_points",
-                     "step_count", "active_time", "avg_heart_rate", "max_heart_rate",
-                     "heart_rate_zones", "hr_zones", "studio"):
+        for attr in ("performance_summary_id", "calories_burned", "splat_points",
+                     "step_count", "active_time_seconds", "heart_rate",
+                     "zone_time_minutes", "otf_class", "studio", "coach"):
             setattr(mock, attr, None)
         mock.model_dump.return_value = {}
 
@@ -71,7 +92,7 @@ class TestWorkoutRecord:
 class TestOTFClient:
     def _make_client_with_mock_otf(self, workouts):
         mock_otf = MagicMock()
-        mock_otf.get_workout_history.return_value = workouts
+        mock_otf.workouts.get_workouts.return_value = workouts
 
         auth = MagicMock()
         auth.get_client.return_value = mock_otf
@@ -87,26 +108,31 @@ class TestOTFClient:
         assert isinstance(records[0], WorkoutRecord)
 
     def test_get_workouts_date_filter(self):
-        early = _make_workout_mock(class_date=date(2024, 1, 1))
-        late = _make_workout_mock(class_date=date(2024, 6, 1))
+        early = _make_workout_mock(starts_at=datetime(2024, 1, 1, 9, 0))
+        late = _make_workout_mock(starts_at=datetime(2024, 6, 1, 9, 0))
         client = self._make_client_with_mock_otf([early, late])
 
         records = client.get_workouts(start_date=date(2024, 3, 1))
-        assert len(records) == 1
-        assert records[0].workout_date == date(2024, 6, 1)
+        # Verify the date filter was passed to the API
+        mock_otf = client._otf
+        mock_otf.workouts.get_workouts.assert_called_once_with(
+            start_date=date(2024, 3, 1), end_date=None,
+        )
 
     def test_get_workouts_end_date_filter(self):
-        early = _make_workout_mock(class_date=date(2024, 1, 1))
-        late = _make_workout_mock(class_date=date(2024, 6, 1))
+        early = _make_workout_mock(starts_at=datetime(2024, 1, 1, 9, 0))
+        late = _make_workout_mock(starts_at=datetime(2024, 6, 1, 9, 0))
         client = self._make_client_with_mock_otf([early, late])
 
         records = client.get_workouts(end_date=date(2024, 2, 28))
-        assert len(records) == 1
-        assert records[0].workout_date == date(2024, 1, 1)
+        mock_otf = client._otf
+        mock_otf.workouts.get_workouts.assert_called_once_with(
+            start_date=None, end_date=date(2024, 2, 28),
+        )
 
     def test_get_member_stats_handles_error(self):
         mock_otf = MagicMock()
-        mock_otf.get_member_stats.side_effect = Exception("API error")
+        mock_otf.workouts.get_member_lifetime_stats_in_studio.side_effect = Exception("API error")
 
         auth = MagicMock()
         auth.get_client.return_value = mock_otf

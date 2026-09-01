@@ -1,8 +1,8 @@
 """Fetch workout and performance data from the OrangeTheory Fitness API.
 
-All network calls are delegated to the ``otf-api`` library.  The methods in
-this class normalise the raw API responses into plain Python
-:class:`dict` / :class:`list` structures so the rest of the codebase does not
+All network calls are delegated to the ``otf-api`` library (v0.15.x).  The
+methods in this class normalise the API's Pydantic models into plain
+:class:`WorkoutRecord` dataclasses so the rest of the codebase does not
 depend on ``otf-api`` internals.
 """
 
@@ -37,48 +37,56 @@ class WorkoutRecord:
 
     @classmethod
     def from_api(cls, data: Any) -> "WorkoutRecord":
-        """Build a :class:`WorkoutRecord` from an ``otf-api`` workout object."""
-        # ``otf-api`` returns Pydantic models; access attributes defensively.
-        def _get(obj: Any, *attrs: str, default: Any = None) -> Any:
-            """Try each attribute name in *attrs* on *obj*, returning the first non-None value."""
-            for attr in attrs:
-                try:
-                    val = getattr(obj, attr)
-                    if val is not None:
-                        return val
-                except AttributeError:
-                    pass
-            return default
-
+        """Build a :class:`WorkoutRecord` from an ``otf-api`` Workout model."""
         raw_dict: dict[str, Any] = {}
         try:
             raw_dict = data.model_dump() if hasattr(data, "model_dump") else {}
         except Exception:
             pass
 
-        workout_date = _get(data, "class_date")
-        if isinstance(workout_date, datetime):
-            workout_date = workout_date.date()
-        elif not isinstance(workout_date, date):
+        # Date comes from the booking's class start time
+        otf_class = getattr(data, "otf_class", None)
+        starts_at = getattr(otf_class, "starts_at", None) if otf_class else None
+        if isinstance(starts_at, datetime):
+            workout_date = starts_at.date()
+        elif isinstance(starts_at, date):
+            workout_date = starts_at
+        else:
             workout_date = date.today()
 
-        # Heart-rate zone breakdown (keys: gray, blue, green, orange, red)
+        # Coach from the class, fallback to workout-level
+        coach = ""
+        if otf_class and getattr(otf_class, "coach", None):
+            coach = otf_class.coach
+        elif getattr(data, "coach", None):
+            coach = data.coach
+
+        # Studio name
+        studio = getattr(data, "studio", None)
+        studio_name = getattr(studio, "name", None) or ""
+
+        # Heart-rate zone breakdown
         zone_time: dict[str, float] = {}
-        hr_zones = _get(data, "heart_rate_zones") or _get(data, "hr_zones")
-        if hr_zones and isinstance(hr_zones, dict):
-            zone_time = {k: float(v or 0) for k, v in hr_zones.items()}
+        ztm = getattr(data, "zone_time_minutes", None)
+        if ztm and hasattr(ztm, "model_dump"):
+            zone_time = {k: float(v or 0) for k, v in ztm.model_dump().items()}
+
+        # Heart rate
+        hr = getattr(data, "heart_rate", None)
+        avg_hr = getattr(hr, "avg_hr", None) if hr else None
+        max_hr = getattr(hr, "max_hr", None) if hr else None
 
         return cls(
-            workout_id=str(_get(data, "workout_id", "id", default="")),
+            workout_id=str(getattr(data, "performance_summary_id", "") or ""),
             workout_date=workout_date,
-            coach=str(_get(data, "coach", default="")),
-            studio_name=str(getattr(getattr(data, "studio", None), "name", None) or ""),
-            calories_burned=int(_get(data, "calories_burned", default=0) or 0),
-            splat_points=int(_get(data, "splat_points", default=0) or 0),
-            step_count=int(_get(data, "step_count", default=0) or 0),
-            active_time_seconds=int(_get(data, "active_time", default=0) or 0),
-            avg_heart_rate=_get(data, "avg_heart_rate"),
-            max_heart_rate=_get(data, "max_heart_rate"),
+            coach=str(coach),
+            studio_name=str(studio_name),
+            calories_burned=int(getattr(data, "calories_burned", 0) or 0),
+            splat_points=int(getattr(data, "splat_points", 0) or 0),
+            step_count=int(getattr(data, "step_count", 0) or 0),
+            active_time_seconds=int(getattr(data, "active_time_seconds", 0) or 0),
+            avg_heart_rate=avg_hr,
+            max_heart_rate=max_hr,
             zone_time_minutes=zone_time,
             raw=raw_dict,
         )
@@ -125,54 +133,39 @@ class OTFClient:
         limit:
             Maximum number of workouts to retrieve (most recent first).
         start_date / end_date:
-            Optional date range filter.
+            Optional date range filter.  When *start_date* is not provided the
+            API defaults to 30 days ago; pass an earlier date for more history.
         """
         self._ensure_connected()
-        logger.info("Fetching up to %d workouts …", limit)
+        logger.info("Fetching workouts …")
 
-        raw_workouts: list[Any] = []
         try:
-            result = self._otf.get_workout_history(limit=limit)  # type: ignore[union-attr]
-            if isinstance(result, list):
-                raw_workouts = result
-            elif hasattr(result, "items"):
-                raw_workouts = list(result.items)
-            else:
-                raw_workouts = list(result)
+            raw_workouts = self._otf.workouts.get_workouts(  # type: ignore[union-attr]
+                start_date=start_date,
+                end_date=end_date,
+            )
         except Exception as exc:
             logger.error("Failed to fetch workouts: %s", exc)
             raise
 
         records = [WorkoutRecord.from_api(w) for w in raw_workouts]
 
-        if start_date:
-            records = [r for r in records if r.workout_date >= start_date]
-        if end_date:
-            records = [r for r in records if r.workout_date <= end_date]
+        # Sort most-recent first and honour the limit
+        records.sort(key=lambda r: r.workout_date, reverse=True)
+        if limit and len(records) > limit:
+            records = records[:limit]
 
         logger.info("Retrieved %d workout records.", len(records))
         return records
 
     def get_member_stats(self) -> dict[str, Any]:
-        """Return a summary dict with aggregate member statistics."""
+        """Return lifetime in-studio statistics for the member."""
         self._ensure_connected()
         try:
-            stats = self._otf.get_member_stats()  # type: ignore[union-attr]
+            stats = self._otf.workouts.get_member_lifetime_stats_in_studio()  # type: ignore[union-attr]
             if hasattr(stats, "model_dump"):
                 return stats.model_dump()
             return dict(stats) if stats else {}
         except Exception as exc:
             logger.warning("Could not fetch member stats: %s", exc)
-            return {}
-
-    def get_performance_summary(self) -> dict[str, Any]:
-        """Return lifetime / recent performance summary."""
-        self._ensure_connected()
-        try:
-            summary = self._otf.get_performance_summary()  # type: ignore[union-attr]
-            if hasattr(summary, "model_dump"):
-                return summary.model_dump()
-            return dict(summary) if summary else {}
-        except Exception as exc:
-            logger.warning("Could not fetch performance summary: %s", exc)
             return {}

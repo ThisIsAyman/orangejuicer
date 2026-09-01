@@ -1,0 +1,8 @@
+name = "otf-proxy"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Restrict which website may use this proxy. Set to your deployed SPA origin,
+# e.g. "https://thisisayman.github.io". Use "*" to allow any origin (less safe).
+[vars]
+ALLOWED_ORIGIN = "*"
